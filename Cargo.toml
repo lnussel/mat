@@ -1,0 +1,12 @@
+[package]
+name = "mat"
+version = "0.0.0"
+description = "TBD"
+
+[[bin]]
+name = "mat"
+path = "src/mat.rs"
+
+[dependencies]
+dbus = "0.9.7"
+dbus-codegen = "0.10.0"
