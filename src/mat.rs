@@ -1,8 +1,10 @@
 extern crate dbus;
+extern crate notcurses;
 
 use dbus::blocking::Connection;
 use std::time::Duration;
 use std::collections::HashMap;
+use notcurses::Notcurses;
 
 mod machined;
 use machined::manager::OrgFreedesktopMachine1Manager;
@@ -25,6 +27,10 @@ struct Image {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    let mut nc = Notcurses::new_cli()?;
+    let mut cli = nc.cli_plane()?;
+
     let conn = Connection::new_system()?;
 
     let proxy = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
@@ -45,9 +51,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             let (ca, cb) = if running.contains_key(&img.name) { ("\x1b[32m", "\x1b[m") } else { ("", "")};
-            println!("{}{} {} {} {}{}", ca, img.name, img.t, img.ro, img.size, cb);
+            let s = format!("{}{} {} {} {}{}", ca, img.name, img.t, img.ro, img.size, cb);
+            cli.putstrln(&s)?;
+            //println!("{}{} {} {} {}{}", ca, img.name, img.t, img.ro, img.size, cb);
         }
     }
+
+    cli.render()?;
 
     Ok(())
 }
