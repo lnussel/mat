@@ -4,7 +4,7 @@ extern crate notcurses;
 use dbus::blocking::Connection;
 use std::time::Duration;
 use std::collections::HashMap;
-use notcurses::{Notcurses,Received,Channel,Key,Style,Plane,Channels};
+use notcurses::{Notcurses,Received,Key,Style,Plane,Channels};
 
 mod machined;
 use machined::manager::OrgFreedesktopMachine1Manager;
@@ -21,6 +21,7 @@ const opensuse_blue      :(u32, u32, u32, u32, u32) = (0x21a4df, 0x38ade2, 0x59b
 //const dialog_round: &str = "╭╮╰╯─│";
 const borders_round: (&str, &str, &str, &str, &str, &str, &str, &str) = ("╭","╮","╰","╯","─","│","├","┤");
 
+#[allow(dead_code)]
 struct Machine {
     name: String,
     class: String,
@@ -28,6 +29,7 @@ struct Machine {
     path: dbus::Path<'static>,
 }
 
+#[allow(dead_code)]
 struct Image {
     name: String,
     t: String,
@@ -44,7 +46,6 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
     if let Ok(l) = bus.list_machines() {
         for i in l {
             let m = Machine { name: i.0, class: i.1, id: i.2, path: i.3 };
-//            println!("Running: {} {} {} {}", m.name, m.class, m.id, m.path);
             running.insert(m.name.clone(), m);
         }
     }
@@ -56,7 +57,13 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             }
             let on = running.contains_key(&img.name);
             if on {
+                let fg = plane.fg();
+                plane.set_fg(0xFF0000);
+                plane.putstr("❤️ ")?;
+                plane.set_fg(fg);
                 plane.on_styles(Style::Bold);
+            } else {
+                plane.putstr("  ")?;
             }
             let s = format!("{} {} {} {}", img.name, img.t, img.ro, img.size);
             plane.putstrln(&s)?;
@@ -74,23 +81,25 @@ fn draw_borders(d: &mut Plane) -> Result<(), Box<dyn std::error::Error>> {
     let y = size.1;
 
     d.putstr(borders_round.0)?;
-    for i in (1..x-1) {
+    for _ in 1..x-1 {
         d.putstr(borders_round.4)?;
     }
-    for i in (1..y-1) {
+    for i in 1..y-1 {
         d.putstr_at((0,i), borders_round.5)?;
     }
     d.putstr_at((0,y-1), borders_round.2)?;
+    let fg = d.fg();
     d.set_fg(0);
     d.putstr_at((x-1,0), borders_round.1)?;
-    for i in (1..y-1) {
+    for i in 1..y-1 {
         d.putstr_at((x-1,i), borders_round.5)?;
     }
     d.putstr_at((1,y-1), borders_round.4)?;
-    for i in (1..x-2) {
+    for _ in 1..x-2 {
         d.putstr(borders_round.4)?;
     }
     d.putstr(borders_round.3)?;
+    d.set_fg(fg);
 
     Ok(())
 }
@@ -101,17 +110,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut plane = Plane::new(&mut nc)?;
     plane.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.0, opensuse_dark_blue.0))?;
-    let bc = plane.base()?;
-//    plane.into_ref_mut().erase();
 
     let size = plane.size();
-    let x = size.0;
-    let y = size.1;
-    let mut d = plane.new_child_sized_at((x-2, y-2), (1,1))?;
+    let x = size.0 - 5;
+    let y = size.1 - 5;
+    let mut d = plane.new_child_sized_at((x, y), (1,1))?;
     d.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.4, opensuse_dark_blue.1))?;
     draw_borders(&mut d)?;
 
-    let mut textarea = plane.new_child_sized_at((x-4, y-4), (2,2))?;
+    let mut textarea = plane.new_child_sized_at((x-2, y-2), (2,2))?;
     textarea.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.0, opensuse_dark_blue.1))?;
     textarea.set_scrolling(true);
 
