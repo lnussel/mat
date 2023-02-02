@@ -54,10 +54,15 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             if img.name.starts_with('.') {
                 continue;
             }
-            let (ca, cb) = if running.contains_key(&img.name) { ("\x1b[32m", "\x1b[m") } else { ("", "")};
-            let s = format!("{}{} {} {} {}{}", ca, img.name, img.t, img.ro, img.size, cb);
+            let on = running.contains_key(&img.name);
+            if on {
+                plane.on_styles(Style::Bold);
+            }
+            let s = format!("{} {} {} {}", img.name, img.t, img.ro, img.size);
             plane.putstrln(&s)?;
-            //println!("{}{} {} {} {}{}", ca, img.name, img.t, img.ro, img.size, cb);
+            if on {
+                plane.off_styles(Style::Bold);
+            }
         }
     }
     Ok(())
