@@ -4,22 +4,24 @@ extern crate notcurses;
 use dbus::blocking::Connection;
 use std::time::Duration;
 use std::collections::HashMap;
-use notcurses::{Notcurses,Received,Key,Style,Plane,Channels};
+use notcurses::{Notcurses,Received,Key,Style,Plane,Channel,Channels,Alpha};
 
 mod machined;
 use machined::manager::OrgFreedesktopMachine1Manager;
 
 // https://en.opensuse.org/Help:Colors
 // primary
-const opensuse_green     :(u32, u32, u32, u32, u32) = (0x73ba25, 0x81c13b, 0x96cb5c, 0xb9dc92, 0xdceec8);
-const opensuse_dark_blue :(u32, u32, u32, u32, u32) = (0x173f4f, 0x2f5361, 0x516f7b, 0x8b9fa7, 0xc5cfd3);
-const opensuse_cyan      :(u32, u32, u32, u32, u32) = (0x35b9ab, 0x4ac0b4, 0x68cbc0, 0x9adcd5, 0xccedea);
+const OPENSUSE_GREEN     :(u32, u32, u32, u32, u32) = (0x73ba25, 0x81c13b, 0x96cb5c, 0xb9dc92, 0xdceec8);
+const OPENSUSE_DARK_BLUE :(u32, u32, u32, u32, u32) = (0x173f4f, 0x2f5361, 0x516f7b, 0x8b9fa7, 0xc5cfd3);
+const OPENSUSE_CYAN      :(u32, u32, u32, u32, u32) = (0x35b9ab, 0x4ac0b4, 0x68cbc0, 0x9adcd5, 0xccedea);
 // secondary
-const opensuse_dark_cyan :(u32, u32, u32, u32, u32) = (0x00a489, 0x1aad95, 0x40bba7, 0x7fd1c4, 0xbfe8e1);
-const opensuse_dark_green:(u32, u32, u32, u32, u32) = (0x6da741, 0x7cb054, 0x92bd71, 0xb6d3a0, 0xdae9cf);
-const opensuse_blue      :(u32, u32, u32, u32, u32) = (0x21a4df, 0x38ade2, 0x59bbe7, 0x90d1ef, 0xc7e8f7);
+const OPENSUSE_DARK_CYAN :(u32, u32, u32, u32, u32) = (0x00a489, 0x1aad95, 0x40bba7, 0x7fd1c4, 0xbfe8e1);
+const OPENSUSE_DARK_GREEN:(u32, u32, u32, u32, u32) = (0x6da741, 0x7cb054, 0x92bd71, 0xb6d3a0, 0xdae9cf);
+const OPENSUSE_BLUE      :(u32, u32, u32, u32, u32) = (0x21a4df, 0x38ade2, 0x59bbe7, 0x90d1ef, 0xc7e8f7);
 //const dialog_round: &str = "╭╮╰╯─│";
-const borders_round: (&str, &str, &str, &str, &str, &str, &str, &str) = ("╭","╮","╰","╯","─","│","├","┤");
+const BORDERS_ROUND: (&str, &str, &str, &str, &str, &str, &str, &str) = ("╭","╮","╰","╯","─","│","├","┤");
+const BORDERS_LIGHT: (&str, &str, &str, &str, &str, &str, &str, &str) = ("┌","┐","└","┘","─","│","├","┤");
+
 
 #[allow(dead_code)]
 struct Machine {
@@ -75,31 +77,76 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
     Ok(())
 }
 
-fn draw_borders(d: &mut Plane) -> Result<(), Box<dyn std::error::Error>> {
+fn draw_borders(d: &mut Plane, shadow: bool) -> Result<(), Box<dyn std::error::Error>> {
     let size = d.size();
     let x = size.0;
     let y = size.1;
+    let mut bxm = x-1;
+    let mut bym = y-1;
+    let b = BORDERS_LIGHT;
+   
+    if shadow {
+        bxm = bxm - 2;
+        bym = bym - 1;
+    }
 
-    d.putstr(borders_round.0)?;
-    for _ in 1..x-1 {
-        d.putstr(borders_round.4)?;
+    //d.set_base("", Style::None, Channels::from_rgb_alpha(OPENSUSE_CYAN.4, Alpha::Transparent, OPENSUSE_DARK_BLUE.1, Alpha::Opaque))?;
+    //d.move_above(&mut plane)?;
+    //d.set_base_styles(Style::None)?;
+    //d.set_base_channels(Channels::from_rgb(OPENSUSE_CYAN.4, OPENSUSE_DARK_BLUE.1))?;
+    //d.set_base_fg(OPENSUSE_CYAN.4)?;
+    //d.set_base_bg(OPENSUSE_CYAN.1)?;
+
+    // upper left then line
+    d.set_bg(OPENSUSE_DARK_BLUE.1);
+    d.set_fg(OPENSUSE_DARK_CYAN.4);
+    d.putstr(b.0)?;
+    for n in 1..bxm {
+        d.putstr(b.4)?;
     }
-    for i in 1..y-1 {
-        d.putstr_at((0,i), borders_round.5)?;
+    // vertical left
+    for i in 1..bym {
+        d.putstr_at((0,i), b.5)?;
     }
-    d.putstr_at((0,y-1), borders_round.2)?;
+    // lower left
+    d.putstr_at((0,bym), b.2)?;
     let fg = d.fg();
     d.set_fg(0);
-    d.putstr_at((x-1,0), borders_round.1)?;
-    for i in 1..y-1 {
-        d.putstr_at((x-1,i), borders_round.5)?;
+    // upper right
+    d.putstr_at((bxm,0), b.1)?;
+    // vertical right
+    for i in 1..bym {
+        d.putstr_at((bxm,i), b.5)?;
     }
-    d.putstr_at((1,y-1), borders_round.4)?;
-    for _ in 1..x-2 {
-        d.putstr(borders_round.4)?;
+    // lower horizontal line
+    d.putstr_at((1,bym), b.4)?;
+    for _ in 2..bxm {
+        d.putstr(b.4)?;
     }
-    d.putstr(borders_round.3)?;
+    d.putstr(b.3)?;
     d.set_fg(fg);
+
+    if shadow {
+        d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 0, Alpha::Transparent));
+        d.putstr_at((x-2,0), "  ")?;
+        d.putstr_at((0, y-1), "  ")?;
+
+        let bg = d.bg();
+        d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 1, Alpha::Opaque));
+
+        // horizontal
+        d.putstr_at((2,y-1), " ")?;
+        for _ in 3..x {
+            d.putstr(" ")?;
+        }
+        // vertical
+        d.putstr_at((x-2,1), "  ")?;
+        for i in 2..y {
+            d.putstr_at((x-2,i), "  ")?;
+        }
+
+        d.set_bg(bg);
+    }
 
     Ok(())
 }
@@ -109,17 +156,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut nc = Notcurses::new()?;
 
     let mut plane = Plane::new(&mut nc)?;
-    plane.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.0, opensuse_dark_blue.0))?;
+    plane.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.0))?;
 
     let size = plane.size();
-    let x = size.0 - 5;
+    let x = size.0 - 10;
     let y = size.1 - 5;
-    let mut d = plane.new_child_sized_at((x, y), (1,1))?;
-    d.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.4, opensuse_dark_blue.1))?;
-    draw_borders(&mut d)?;
 
-    let mut textarea = plane.new_child_sized_at((x-2, y-2), (2,2))?;
-    textarea.set_base(" ", Style::None, Channels::from_rgb(opensuse_cyan.0, opensuse_dark_blue.1))?;
+    //plane.putstr_at((x-1,1), "###")?;
+    //plane.putstr_at((x-1,3), "###")?;
+
+    let mut d = plane.new_child_sized_at((x, y), (1,1))?;
+
+    let shadow:bool = true;
+    draw_borders(&mut d, shadow)?;
+
+    // XXX: textara must be smaller with shadow
+    let mut textarea = plane.new_child_sized_at((x-(if shadow {4} else {3}), y-3), (2,2))?;
+    textarea.set_base("", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.1))?;
     textarea.set_scrolling(true);
 
     let conn = Connection::new_system()?;
