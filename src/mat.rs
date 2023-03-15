@@ -4,7 +4,7 @@ extern crate notcurses;
 use dbus::blocking::Connection;
 use std::time::Duration;
 use std::collections::HashMap;
-use notcurses::{Notcurses,Received,Key,Style,Plane,Channel,Channels,Alpha};
+use notcurses::{Notcurses,Received,Key,Style,Plane,Channel,Channels,Alpha,Position,Size};
 
 mod machined;
 use machined::manager::OrgFreedesktopMachine1Manager;
@@ -21,6 +21,8 @@ const OPENSUSE_BLUE      :(u32, u32, u32, u32, u32) = (0x21a4df, 0x38ade2, 0x59b
 //const dialog_round: &str = "╭╮╰╯─│";
 const BORDERS_ROUND: (&str, &str, &str, &str, &str, &str, &str, &str) = ("╭","╮","╰","╯","─","│","├","┤");
 const BORDERS_LIGHT: (&str, &str, &str, &str, &str, &str, &str, &str) = ("┌","┐","└","┘","─","│","├","┤");
+
+const SIZE_UNITS: [&str; 5] = ["", "k", "M", "G", "T"];
 
 
 #[allow(dead_code)]
@@ -43,6 +45,9 @@ struct Image {
 }
 
 fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
+
+    plane.cursor_home();
+
     let mut running = HashMap::new();
 
     if let Ok(l) = bus.list_machines() {
@@ -67,7 +72,24 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             } else {
                 plane.putstr("  ")?;
             }
-            let s = format!("{} {} {} {}", img.name, img.t, img.ro, img.size);
+            let mut ss = "".to_string();
+            if img.size > 1<<(10*(SIZE_UNITS.len())) {
+                ss = "♾️".to_string();
+            } else {
+                for i in (0..SIZE_UNITS.len()).rev() {
+                    if img.size > 1<<(10*i) {
+                        ss = format!("{}{}", img.size>>(10*i), SIZE_UNITS[i]);
+                        break;
+                    }
+                }
+            }
+            let mut name = img.name;
+            // XXX: calculate available space
+            if name.len() > 22 {
+                name.truncate(20);
+                name.push_str("..");
+            }
+            let s = format!("{:22} {} {:>5}", name, if img.ro { "ro" } else { "rw" }, ss);
             plane.putstrln(&s)?;
             if on {
                 plane.off_styles(Style::Bold);
@@ -76,6 +98,22 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
     }
     Ok(())
 }
+
+/*
+struct Dialog<'a> {
+    title: &'a mut str,
+    x: u32,
+    y: u32,
+    d: &'a mut Plane,
+}
+
+impl<'a> Dialog<'a> {
+    fn new_sized_at(plane: &mut Plane, size: impl Into<Size>, position: impl Into<Position>) -> Self {
+        let mut d = plane.new_child_sized_at(size, position)?;
+        Self { title: "", x: 0, y: 0, d: d }
+    }
+}
+*/
 
 fn draw_borders(d: &mut Plane, shadow: bool) -> Result<(), Box<dyn std::error::Error>> {
     let size = d.size();
@@ -166,6 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //plane.putstr_at((x-1,3), "###")?;
 
     let mut d = plane.new_child_sized_at((x, y), (1,1))?;
+    //let mut d = Dialog::new_sized_at(plane, (x, y), (1,1))?;
 
     let shadow:bool = true;
     draw_borders(&mut d, shadow)?;
@@ -188,7 +227,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Received::Key(Key::Resize) => {},
 //            Received::Key(notcurses::Received::Esc) => break,
             Received::Char('r') => {
-                update_listing(&mut plane, &bus)?;
+                update_listing(&mut textarea, &bus)?;
             },
             Received::Char('q') => break,
             _ => {
