@@ -262,19 +262,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let size = plane.size();
 
-        plane.putstr_at((1,size.1-1), "Enter: Start/Stop, Right: Shell, F5: Refresh, q: quit")?;
-
-        let mut di = Dialog::new_sized_at(&mut plane, (size.0-2, size.1-3).into(), (1,1).into(), true)?;
-
         let conn = Connection::new_system()?;
 
         let machined = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
-        let systemd = conn.with_proxy("org.freedesktop.systemd1", "/org/freedesktop/systemd1", Duration::from_millis(5000));
 
         let mut images: Vec<Image> = Vec::new();
         update_images(&mut images, &machined)?;
+
+        if images.len() == 0 {
+            let mut txt = Dialog::new_centered_text(&mut plane, "No images found", true)?;
+            plane.render()?;
+            nc.get_event();
+            return Err("No images found, read https://en.opensuse.org/Systemd-machined".into());
+        }
+
+        plane.putstr_at((1,size.1-1), "Enter: Start/Stop, Right: Shell, F5: Refresh, q: quit")?;
+
+        let mut di = Dialog::new_sized_at(&mut plane, (size.0-2, size.1-3).into(), (1,1).into(), true)?;
         let mut current: usize = 0;
         draw_images(&mut di.content, &images, current);
+
+        let systemd = conn.with_proxy("org.freedesktop.systemd1", "/org/freedesktop/systemd1", Duration::from_millis(5000));
 
         plane.render()?;
 
