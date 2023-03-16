@@ -34,7 +34,7 @@ struct Machine {
 }
 
 #[allow(dead_code)]
-struct Image<'a> {
+struct Image {
     name: String,
     t: String,
     ro: bool,
@@ -42,13 +42,10 @@ struct Image<'a> {
     t_modified: u64,
     size: u64,
     path: dbus::Path<'static>,
-    machine: Option<&'a Machine>,
+    machine: Option<Machine>,
 }
 
-fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
-
-    plane.into_ref_mut().erase();
-    plane.cursor_home();
+fn update_images(images: &mut Vec<Image>, bus: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut running = HashMap::new();
 
@@ -58,18 +55,24 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             running.insert(m.name.clone(), m);
         }
     }
-    let mut images: Vec<Image> = Vec::new();
     if let Ok(l) = bus.list_images() {
+        images.clear();
         for i in l {
             if i.0.starts_with('.') {
                 continue;
             }
             let on = running.contains_key(&i.0);
-            let img = Image { name: i.0.clone(), t: i.1, ro: i.2, t_created: i.3, t_modified: i.4, size: i.5, path: i.6, machine: if on {running.get(&i.0) } else {Option::None} };
+            let img = Image { name: i.0.clone(), t: i.1, ro: i.2, t_created: i.3, t_modified: i.4, size: i.5, path: i.6, machine: if on {running.remove(&i.0) } else {Option::None} };
             images.push(img);
         }
         images.sort_by(|a,b| a.name.cmp(&b.name));
     }
+    Ok(())
+}
+
+fn draw_images(plane: &mut Plane, images: &Vec<Image>) -> Result<(), Box<dyn std::error::Error>> {
+    plane.into_ref_mut().erase();
+    plane.cursor_home();
 
     for img in images {
             if img.machine.is_some() {
@@ -92,7 +95,7 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
                     }
                 }
             }
-            let mut name = img.name;
+            let mut name = img.name.clone();
             // XXX: calculate available space
             if name.len() > 22 {
                 name.truncate(20);
@@ -237,7 +240,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bus = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
 
-    update_listing(&mut di.content, &bus)?;
+    let mut images: Vec<Image> = Vec::new();
+    update_images(&mut images, &bus)?;
+    draw_images(&mut di.content, &images);
 
     plane.render()?;
 
@@ -246,7 +251,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Received::Key(Key::Resize) => {},
 //            Received::Key(notcurses::Received::Esc) => break,
             Received::Char('r') => {
-                update_listing(&mut di.content, &bus)?;
+                update_images(&mut images, &bus)?;
+                draw_images(&mut di.content, &images);
             },
             Received::Char('q') => break,
             _ => {
