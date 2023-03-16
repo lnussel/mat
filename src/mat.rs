@@ -152,7 +152,6 @@ impl Dialog {
         Ok(Self { title: "".to_string(), pos, size, has_shadow: shadow, d, content})
     }
 
-
     fn draw_borders(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut d = &mut self.d;
         let size = d.size();
@@ -240,16 +239,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         plane.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.0))?;
 
         let size = plane.size();
-        let x = size.0 - 10;
-        let y = size.1 - 5;
 
-        //plane.putstr_at((x-1,1), "###")?;
-        //plane.putstr_at((x-1,3), "###")?;
+        plane.putstr_at((1,size.1-1), "Enter: Start/Stop, Right: Shell, F5: Refresh, q: quit")?;
 
-        //let mut d = plane.new_child_sized_at((x, y), (1,1))?;
-        //let mut d = Dialog::new_sized_at(plane, (x, y), (1,1))?;
-
-        let mut di = Dialog::new_sized_at(&mut plane, (x, y).into(), (1,1).into(), true)?;
+        let mut di = Dialog::new_sized_at(&mut plane, (size.0-2, size.1-3).into(), (1,1).into(), true)?;
 
         di.draw_borders()?;
 
@@ -266,40 +259,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         plane.render()?;
 
         while let Ok(e) = nc.get_event() {
+            let mut update = false;
+            let mut redraw = false;
             match e.received {
-                Received::Key(Key::Enter) => {
+                Received::Key(Key::Right) => {
                     if images[current].machine.is_some() {
                         cmd.arg("shell").arg(images[current].name.clone());
                         break;
+                    }
+                }
+                Received::Char('r') => {
+                    if images[current].machine.is_some() {
+                        // reboot
+                        machined.kill_machine(&images[current].name, "leader", 2 /* SIGINT */);
+                    }
+                }
+                Received::Key(Key::Enter) => {
+                    if images[current].machine.is_some() {
+                        // poweroff
+                        machined.kill_machine(&images[current].name, "leader", 38 /* SIGRTMIN+4 */);
                     } else {
                         let name = format!("systemd-nspawn@{}.service", images[current].name);
                         systemd.start_unit(&name, "fail");
-                        // XXX: refresh
                     }
+                    notcurses::sleep![2,0];
+                    update = true;
                 },
                 Received::Key(Key::Resize) => {},
                 //            Received::Key(notcurses::Received::Esc) => break,
                 Received::Key(Key::F05) => {
                     current = 0;
-                    update_images(&mut images, &machined)?;
-                    draw_images(&mut di.content, &images, current);
+                    redraw = true;
                 },
                 Received::Char('q') => break,
                 Received::Key(Key::Up) => {
                     if current > 0 {
                         current -= 1;
                     }
-                    draw_images(&mut di.content, &images, current);
+                    redraw = true;
                 },
                 Received::Key(Key::Down) => {
                     if current + 1 < images.len() {
                         current += 1;
                     }
-                    draw_images(&mut di.content, &images, current);
+                    redraw = true;
                 },
                 _ => {
                     return Err(format!("Invalid event {}", e).into());
                 },
+            }
+            if update {
+                update_images(&mut images, &machined)?;
+                redraw = true;
+            }
+            if redraw {
+                    draw_images(&mut di.content, &images, current);
             }
             plane.render()?;
         }
