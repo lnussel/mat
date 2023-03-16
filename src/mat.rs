@@ -70,11 +70,17 @@ fn update_images(images: &mut Vec<Image>, bus: &dbus::blocking::Proxy<'_, &dbus:
     Ok(())
 }
 
-fn draw_images(plane: &mut Plane, images: &Vec<Image>) -> Result<(), Box<dyn std::error::Error>> {
+fn draw_images(plane: &mut Plane, images: &Vec<Image>, current: u32) -> Result<(), Box<dyn std::error::Error>> {
     plane.into_ref_mut().erase();
     plane.cursor_home();
 
+    let mut i: u32 = 0;
     for img in images {
+            let bg = plane.bg();
+            if i == current {
+                plane.set_bg(OPENSUSE_DARK_BLUE.2);
+            }
+            plane.cursor_move_to((0, i));
             if img.machine.is_some() {
                 let fg = plane.fg();
                 plane.set_fg(0xFF0000);
@@ -86,7 +92,7 @@ fn draw_images(plane: &mut Plane, images: &Vec<Image>) -> Result<(), Box<dyn std
             }
             let mut ss = "".to_string();
             if img.size > 1<<(10*(SIZE_UNITS.len())) {
-                ss = "♾️".to_string();
+                ss = "-".to_string();
             } else {
                 for i in (0..SIZE_UNITS.len()).rev() {
                     if img.size > 1<<(10*i) {
@@ -97,15 +103,20 @@ fn draw_images(plane: &mut Plane, images: &Vec<Image>) -> Result<(), Box<dyn std
             }
             let mut name = img.name.clone();
             // XXX: calculate available space
-            if name.len() > 22 {
-                name.truncate(20);
+            let maxlen: usize = plane.size().0 as usize - 11;
+            if name.len() > maxlen {
+                name.truncate(maxlen - 2);
                 name.push_str("..");
             }
-            let s = format!("{:22} {} {:>5}", name, if img.ro { "ro" } else { "rw" }, ss);
-            plane.putstrln(&s)?;
+            let s = format!("{:maxlen$} {} {:>5}", name, if img.ro { "ro" } else { "rw" }, ss);
+            plane.putstr(&s)?;
             if img.machine.is_some() {
                 plane.off_styles(Style::Bold);
             }
+            if i == current {
+                plane.set_bg(bg);
+            }
+            i += 1;
     }
     Ok(())
 }
@@ -242,7 +253,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut images: Vec<Image> = Vec::new();
     update_images(&mut images, &bus)?;
-    draw_images(&mut di.content, &images);
+    let mut current: u32 = 0;
+    draw_images(&mut di.content, &images, current);
 
     plane.render()?;
 
@@ -250,11 +262,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match e.received {
             Received::Key(Key::Resize) => {},
 //            Received::Key(notcurses::Received::Esc) => break,
-            Received::Char('r') => {
+            Received::Key(Key::F05) => {
+                current = 0;
                 update_images(&mut images, &bus)?;
-                draw_images(&mut di.content, &images);
+                draw_images(&mut di.content, &images, current);
             },
             Received::Char('q') => break,
+            Received::Key(Key::Up) => {
+                if current > 0 {
+                    current -= 1;
+                }
+                draw_images(&mut di.content, &images, current);
+            },
+            Received::Key(Key::Down) => {
+                if current + 1 < images.len() as u32 {
+                    current += 1;
+                }
+                draw_images(&mut di.content, &images, current);
+            },
             _ => {
                 return Err(format!("Invalid event {}", e).into());
             },
