@@ -143,13 +143,35 @@ impl Dialog {
     }
     */
 
-    fn new_sized_at(parent: &mut Plane, size: Size, pos: Position, shadow: bool) -> Result<Dialog, notcurses::Error> {
+    fn new_sized_at(parent: &mut Plane, size: Size, pos: Position, shadow: bool) -> Result<Dialog, Box<dyn std::error::Error>> {
         let d = parent.new_child_sized_at(size, pos)?;
-        // XXX: textara must be smaller with shadow
         let mut content = parent.new_child_sized_at((size.0-(if shadow {4} else {3}), size.1-3), (pos.0+1,pos.1+1))?;
         content.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.1))?;
         content.set_scrolling(true);
-        Ok(Self { title: "".to_string(), pos, size, has_shadow: shadow, d, content})
+
+        let mut di = Self { title: "".to_string(), pos, size, has_shadow: shadow, d, content};
+        di.draw_borders()?;
+
+        Ok(di)
+    }
+
+    fn new_centered_text(parent: &mut Plane, text: &str, shadow: bool) -> Result<Dialog, Box<dyn std::error::Error>> {
+        let needed = text.len() as u32;
+        let size = parent.size();
+        let x = size.0/2-needed/2;
+        let y = size.1/2;
+        let h = 1;
+        let w = needed;
+        let d = parent.new_child_sized_at((w + if shadow {4} else {2}, h + if shadow {3} else {2}), (x-1, y-1))?;
+        let mut content = parent.new_child_sized_at((w, h),(x, y))?;
+        content.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.1))?;
+        content.putstr(&text)?;
+
+
+        let mut di = Self { title: "".to_string(), pos: d.position(), size: d.size(), has_shadow: shadow, d, content};
+        di.draw_borders()?;
+
+        Ok(di)
     }
 
     fn draw_borders(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -244,8 +266,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut di = Dialog::new_sized_at(&mut plane, (size.0-2, size.1-3).into(), (1,1).into(), true)?;
 
-        di.draw_borders()?;
-
         let conn = Connection::new_system()?;
 
         let machined = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
@@ -279,11 +299,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if images[current].machine.is_some() {
                             // poweroff
                             machined.kill_machine(&images[current].name, "leader", 38 /* SIGRTMIN+4 */);
+                            let mut txt = Dialog::new_centered_text(&mut plane, "powering off", true)?;
+                            plane.render()?;
+                            // FIXME
+                            notcurses::sleep![2,0];
                         } else {
                             let name = format!("systemd-nspawn@{}.service", images[current].name);
                             systemd.start_unit(&name, "fail");
+                            let mut txt = Dialog::new_centered_text(&mut plane, "starting", true)?;
+                            plane.render()?;
+                            // FIXME
+                            notcurses::sleep![2,0];
                         }
-                        notcurses::sleep![2,0];
                         update = true;
                     }
                 },
