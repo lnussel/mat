@@ -2,3 +2,5 @@
 - key to clone and rename images
 - dispatch events to current dialog
 - dialog for import => upsteam systemd needs polkit actions
+- user name for shell
+- edit feature (requires our own dbus service)
