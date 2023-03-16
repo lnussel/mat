@@ -99,94 +99,109 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
     Ok(())
 }
 
-/*
-struct Dialog<'a> {
-    title: &'a mut str,
-    x: u32,
-    y: u32,
-    d: &'a mut Plane,
+struct Dialog {
+    title: String,
+    pos: Position,
+    size: Size,
+    has_shadow: bool,
+    d: Plane,
+    content: Plane,
 }
 
-impl<'a> Dialog<'a> {
-    fn new_sized_at(plane: &mut Plane, size: impl Into<Size>, position: impl Into<Position>) -> Self {
-        let mut d = plane.new_child_sized_at(size, position)?;
-        Self { title: "", x: 0, y: 0, d: d }
-    }
-}
-*/
+impl Dialog {
 
-fn draw_borders(d: &mut Plane, shadow: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let size = d.size();
-    let x = size.0;
-    let y = size.1;
-    let mut bxm = x-1;
-    let mut bym = y-1;
-    let b = BORDERS_LIGHT;
-   
-    if shadow {
-        bxm = bxm - 2;
-        bym = bym - 1;
+    /*
+    fn new(parent: &mut Plane) -> Result<Dialog, notcurses::Error> {
+        let size = parent.size();
+        let d = parent.new_child_sized_at(size, (0,0))?;
+        Ok(Self { title: "".to_string(), pos: Position::new(1,1), size, has_shadow: true, d })
+    }
+    */
+
+    fn new_sized_at(parent: &mut Plane, size: Size, pos: Position, shadow: bool) -> Result<Dialog, notcurses::Error> {
+        let d = parent.new_child_sized_at(size, pos)?;
+        // XXX: textara must be smaller with shadow
+        let mut content = parent.new_child_sized_at((size.0-(if shadow {4} else {3}), size.1-3), (pos.0+1,pos.1+1))?;
+        content.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.1))?;
+        content.set_scrolling(true);
+        Ok(Self { title: "".to_string(), pos, size, has_shadow: shadow, d, content})
     }
 
-    //d.set_base("", Style::None, Channels::from_rgb_alpha(OPENSUSE_CYAN.4, Alpha::Transparent, OPENSUSE_DARK_BLUE.1, Alpha::Opaque))?;
-    //d.move_above(&mut plane)?;
-    //d.set_base_styles(Style::None)?;
-    //d.set_base_channels(Channels::from_rgb(OPENSUSE_CYAN.4, OPENSUSE_DARK_BLUE.1))?;
-    //d.set_base_fg(OPENSUSE_CYAN.4)?;
-    //d.set_base_bg(OPENSUSE_CYAN.1)?;
 
-    // upper left then line
-    d.set_bg(OPENSUSE_DARK_BLUE.1);
-    d.set_fg(OPENSUSE_DARK_CYAN.4);
-    d.putstr(b.0)?;
-    for n in 1..bxm {
-        d.putstr(b.4)?;
-    }
-    // vertical left
-    for i in 1..bym {
-        d.putstr_at((0,i), b.5)?;
-    }
-    // lower left
-    d.putstr_at((0,bym), b.2)?;
-    let fg = d.fg();
-    d.set_fg(0);
-    // upper right
-    d.putstr_at((bxm,0), b.1)?;
-    // vertical right
-    for i in 1..bym {
-        d.putstr_at((bxm,i), b.5)?;
-    }
-    // lower horizontal line
-    d.putstr_at((1,bym), b.4)?;
-    for _ in 2..bxm {
-        d.putstr(b.4)?;
-    }
-    d.putstr(b.3)?;
-    d.set_fg(fg);
+    fn draw_borders(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut d = &mut self.d;
+        let size = d.size();
+        let x = size.0;
+        let y = size.1;
+        let mut bxm = x-1;
+        let mut bym = y-1;
+        let b = BORDERS_LIGHT;
 
-    if shadow {
-        d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 0, Alpha::Transparent));
-        d.putstr_at((x-2,0), "  ")?;
-        d.putstr_at((0, y-1), "  ")?;
-
-        let bg = d.bg();
-        d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 1, Alpha::Opaque));
-
-        // horizontal
-        d.putstr_at((2,y-1), " ")?;
-        for _ in 3..x {
-            d.putstr(" ")?;
-        }
-        // vertical
-        d.putstr_at((x-2,1), "  ")?;
-        for i in 2..y {
-            d.putstr_at((x-2,i), "  ")?;
+        if self.has_shadow {
+            bxm = bxm - 2;
+            bym = bym - 1;
         }
 
-        d.set_bg(bg);
-    }
+        //d.set_base("", Style::None, Channels::from_rgb_alpha(OPENSUSE_CYAN.4, Alpha::Transparent, OPENSUSE_DARK_BLUE.1, Alpha::Opaque))?;
+        //d.move_above(&mut plane)?;
+        //d.set_base_styles(Style::None)?;
+        //d.set_base_channels(Channels::from_rgb(OPENSUSE_CYAN.4, OPENSUSE_DARK_BLUE.1))?;
+        //d.set_base_fg(OPENSUSE_CYAN.4)?;
+        //d.set_base_bg(OPENSUSE_CYAN.1)?;
 
-    Ok(())
+        // upper left then line
+        d.set_bg(OPENSUSE_DARK_BLUE.1);
+        d.set_fg(OPENSUSE_DARK_CYAN.4);
+        d.putstr(b.0)?;
+        for n in 1..bxm {
+            d.putstr(b.4)?;
+        }
+        // vertical left
+        for i in 1..bym {
+            d.putstr_at((0,i), b.5)?;
+        }
+        // lower left
+        d.putstr_at((0,bym), b.2)?;
+        let fg = d.fg();
+        d.set_fg(0);
+        // upper right
+        d.putstr_at((bxm,0), b.1)?;
+        // vertical right
+        for i in 1..bym {
+            d.putstr_at((bxm,i), b.5)?;
+        }
+        // lower horizontal line
+        d.putstr_at((1,bym), b.4)?;
+        for _ in 2..bxm {
+            d.putstr(b.4)?;
+        }
+        d.putstr(b.3)?;
+        d.set_fg(fg);
+
+        if self.has_shadow {
+            d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 0, Alpha::Transparent));
+            d.putstr_at((x-2,0), "  ")?;
+            d.putstr_at((0, y-1), "  ")?;
+
+            let bg = d.bg();
+            d.set_channels(Channels::from_rgb_alpha(0, Alpha::Transparent, 1, Alpha::Opaque));
+
+            // horizontal
+            d.putstr_at((2,y-1), " ")?;
+            for _ in 3..x {
+                d.putstr(" ")?;
+            }
+            // vertical
+            d.putstr_at((x-2,1), "  ")?;
+            for i in 2..y {
+                d.putstr_at((x-2,i), "  ")?;
+            }
+
+            d.set_bg(bg);
+        }
+
+        Ok(())
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -203,22 +218,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //plane.putstr_at((x-1,1), "###")?;
     //plane.putstr_at((x-1,3), "###")?;
 
-    let mut d = plane.new_child_sized_at((x, y), (1,1))?;
+    //let mut d = plane.new_child_sized_at((x, y), (1,1))?;
     //let mut d = Dialog::new_sized_at(plane, (x, y), (1,1))?;
 
-    let shadow:bool = true;
-    draw_borders(&mut d, shadow)?;
+    let mut di = Dialog::new_sized_at(&mut plane, (x, y).into(), (1,1).into(), true)?;
 
-    // XXX: textara must be smaller with shadow
-    let mut textarea = plane.new_child_sized_at((x-(if shadow {4} else {3}), y-3), (2,2))?;
-    textarea.set_base("", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.1))?;
-    textarea.set_scrolling(true);
+    di.draw_borders()?;
 
     let conn = Connection::new_system()?;
 
     let bus = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
 
-    update_listing(&mut textarea, &bus)?;
+    update_listing(&mut di.content, &bus)?;
 
     plane.render()?;
 
@@ -227,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Received::Key(Key::Resize) => {},
 //            Received::Key(notcurses::Received::Esc) => break,
             Received::Char('r') => {
-                update_listing(&mut textarea, &bus)?;
+                update_listing(&mut di.content, &bus)?;
             },
             Received::Char('q') => break,
             _ => {
