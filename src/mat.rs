@@ -263,27 +263,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut redraw = false;
             match e.received {
                 Received::Key(Key::Right) => {
-                    if images[current].machine.is_some() {
+                    if images.len() > 0 && images[current].machine.is_some() {
                         cmd.arg("shell").arg(images[current].name.clone());
                         break;
                     }
                 }
                 Received::Char('r') => {
-                    if images[current].machine.is_some() {
+                    if images.len() > 0 && images[current].machine.is_some() {
                         // reboot
                         machined.kill_machine(&images[current].name, "leader", 2 /* SIGINT */);
                     }
                 }
                 Received::Key(Key::Enter) => {
-                    if images[current].machine.is_some() {
-                        // poweroff
-                        machined.kill_machine(&images[current].name, "leader", 38 /* SIGRTMIN+4 */);
-                    } else {
-                        let name = format!("systemd-nspawn@{}.service", images[current].name);
-                        systemd.start_unit(&name, "fail");
+                    if images.len() > 0 {
+                        if images[current].machine.is_some() {
+                            // poweroff
+                            machined.kill_machine(&images[current].name, "leader", 38 /* SIGRTMIN+4 */);
+                        } else {
+                            let name = format!("systemd-nspawn@{}.service", images[current].name);
+                            systemd.start_unit(&name, "fail");
+                        }
+                        notcurses::sleep![2,0];
+                        update = true;
                     }
-                    notcurses::sleep![2,0];
-                    update = true;
                 },
                 Received::Key(Key::Resize) => {},
                 //            Received::Key(notcurses::Received::Esc) => break,
