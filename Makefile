@@ -4,4 +4,7 @@ all: src/machined/manager.rs
 src/machined/manager.rs: /usr/share/dbus-1/interfaces/org.freedesktop.machine1.Manager.xml
 	dbus-codegen-0.10.0/target/debug/dbus-codegen-rust --file $^ > $@
 
+src/systemd/manager.rs: /usr/share/dbus-1/interfaces/org.freedesktop.systemd1.Manager.xml
+	dbus-codegen-0.10.0/target/debug/dbus-codegen-rust --file $^ > $@
+
 .PHONY: all
