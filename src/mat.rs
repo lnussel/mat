@@ -1,6 +1,7 @@
 extern crate dbus;
 extern crate notcurses;
 
+use std::process::Command;
 use dbus::blocking::Connection;
 use std::time::Duration;
 use std::collections::HashMap;
@@ -8,6 +9,8 @@ use notcurses::{Notcurses,Received,Key,Style,Plane,Channel,Channels,Alpha,Positi
 
 mod machined;
 use machined::manager::OrgFreedesktopMachine1Manager;
+mod systemd;
+use systemd::manager::OrgFreedesktopSystemd1Manager;
 
 // https://en.opensuse.org/Help:Colors
 // primary
@@ -45,17 +48,17 @@ struct Image {
     machine: Option<Machine>,
 }
 
-fn update_images(images: &mut Vec<Image>, bus: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
+fn update_images(images: &mut Vec<Image>, machined: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut running = HashMap::new();
 
-    if let Ok(l) = bus.list_machines() {
+    if let Ok(l) = machined.list_machines() {
         for i in l {
             let m = Machine { name: i.0, class: i.1, id: i.2, path: i.3 };
             running.insert(m.name.clone(), m);
         }
     }
-    if let Ok(l) = bus.list_images() {
+    if let Ok(l) = machined.list_images() {
         images.clear();
         for i in l {
             if i.0.starts_with('.') {
@@ -70,17 +73,17 @@ fn update_images(images: &mut Vec<Image>, bus: &dbus::blocking::Proxy<'_, &dbus:
     Ok(())
 }
 
-fn draw_images(plane: &mut Plane, images: &Vec<Image>, current: u32) -> Result<(), Box<dyn std::error::Error>> {
+fn draw_images(plane: &mut Plane, images: &Vec<Image>, current: usize) -> Result<(), Box<dyn std::error::Error>> {
     plane.into_ref_mut().erase();
     plane.cursor_home();
 
-    let mut i: u32 = 0;
+    let mut idx: usize = 0;
     for img in images {
             let bg = plane.bg();
-            if i == current {
+            if idx == current {
                 plane.set_bg(OPENSUSE_DARK_BLUE.2);
             }
-            plane.cursor_move_to((0, i));
+            plane.cursor_move_to((0, idx));
             if img.machine.is_some() {
                 let fg = plane.fg();
                 plane.set_fg(0xFF0000);
@@ -113,10 +116,10 @@ fn draw_images(plane: &mut Plane, images: &Vec<Image>, current: u32) -> Result<(
             if img.machine.is_some() {
                 plane.off_styles(Style::Bold);
             }
-            if i == current {
+            if idx == current {
                 plane.set_bg(bg);
             }
-            i += 1;
+            idx += 1;
     }
     Ok(())
 }
@@ -228,63 +231,82 @@ impl Dialog {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    let mut nc = Notcurses::new()?;
+    let mut cmd = Command::new("machinectl");
 
-    let mut plane = Plane::new(&mut nc)?;
-    plane.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.0))?;
+    {
+        let mut nc = Notcurses::new()?;
 
-    let size = plane.size();
-    let x = size.0 - 10;
-    let y = size.1 - 5;
+        let mut plane = Plane::new(&mut nc)?;
+        plane.set_base(" ", Style::None, Channels::from_rgb(OPENSUSE_CYAN.0, OPENSUSE_DARK_BLUE.0))?;
 
-    //plane.putstr_at((x-1,1), "###")?;
-    //plane.putstr_at((x-1,3), "###")?;
+        let size = plane.size();
+        let x = size.0 - 10;
+        let y = size.1 - 5;
 
-    //let mut d = plane.new_child_sized_at((x, y), (1,1))?;
-    //let mut d = Dialog::new_sized_at(plane, (x, y), (1,1))?;
+        //plane.putstr_at((x-1,1), "###")?;
+        //plane.putstr_at((x-1,3), "###")?;
 
-    let mut di = Dialog::new_sized_at(&mut plane, (x, y).into(), (1,1).into(), true)?;
+        //let mut d = plane.new_child_sized_at((x, y), (1,1))?;
+        //let mut d = Dialog::new_sized_at(plane, (x, y), (1,1))?;
 
-    di.draw_borders()?;
+        let mut di = Dialog::new_sized_at(&mut plane, (x, y).into(), (1,1).into(), true)?;
 
-    let conn = Connection::new_system()?;
+        di.draw_borders()?;
 
-    let bus = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
+        let conn = Connection::new_system()?;
 
-    let mut images: Vec<Image> = Vec::new();
-    update_images(&mut images, &bus)?;
-    let mut current: u32 = 0;
-    draw_images(&mut di.content, &images, current);
+        let machined = conn.with_proxy("org.freedesktop.machine1", "/org/freedesktop/machine1", Duration::from_millis(5000));
+        let systemd = conn.with_proxy("org.freedesktop.systemd1", "/org/freedesktop/systemd1", Duration::from_millis(5000));
 
-    plane.render()?;
+        let mut images: Vec<Image> = Vec::new();
+        update_images(&mut images, &machined)?;
+        let mut current: usize = 0;
+        draw_images(&mut di.content, &images, current);
 
-    while let Ok(e) = nc.get_event() {
-        match e.received {
-            Received::Key(Key::Resize) => {},
-//            Received::Key(notcurses::Received::Esc) => break,
-            Received::Key(Key::F05) => {
-                current = 0;
-                update_images(&mut images, &bus)?;
-                draw_images(&mut di.content, &images, current);
-            },
-            Received::Char('q') => break,
-            Received::Key(Key::Up) => {
-                if current > 0 {
-                    current -= 1;
-                }
-                draw_images(&mut di.content, &images, current);
-            },
-            Received::Key(Key::Down) => {
-                if current + 1 < images.len() as u32 {
-                    current += 1;
-                }
-                draw_images(&mut di.content, &images, current);
-            },
-            _ => {
-                return Err(format!("Invalid event {}", e).into());
-            },
-        }
         plane.render()?;
+
+        while let Ok(e) = nc.get_event() {
+            match e.received {
+                Received::Key(Key::Enter) => {
+                    if images[current].machine.is_some() {
+                        cmd.arg("shell").arg(images[current].name.clone());
+                        break;
+                    } else {
+                        let name = format!("systemd-nspawn@{}.service", images[current].name);
+                        systemd.start_unit(&name, "fail");
+                        // XXX: refresh
+                    }
+                },
+                Received::Key(Key::Resize) => {},
+                //            Received::Key(notcurses::Received::Esc) => break,
+                Received::Key(Key::F05) => {
+                    current = 0;
+                    update_images(&mut images, &machined)?;
+                    draw_images(&mut di.content, &images, current);
+                },
+                Received::Char('q') => break,
+                Received::Key(Key::Up) => {
+                    if current > 0 {
+                        current -= 1;
+                    }
+                    draw_images(&mut di.content, &images, current);
+                },
+                Received::Key(Key::Down) => {
+                    if current + 1 < images.len() {
+                        current += 1;
+                    }
+                    draw_images(&mut di.content, &images, current);
+                },
+                _ => {
+                    return Err(format!("Invalid event {}", e).into());
+                },
+            }
+            plane.render()?;
+        }
+    }
+
+    if cmd.get_args().len() > 0 {
+        cmd.status();
     }
 
     Ok(())
