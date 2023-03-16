@@ -1,0 +1,4 @@
+- highlight current entry
+- cursor movement
+- listen to signals to update list
+- start/stop/shell actions
