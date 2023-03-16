@@ -1,4 +1,4 @@
 - listen to signals to update list
-- start/stop/shell actions
-- open dialog when keypress
+- key to clone and rename images
 - dispatch events to current dialog
+- dialog for import => upsteam systemd needs polkit actions
