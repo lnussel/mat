@@ -34,7 +34,7 @@ struct Machine {
 }
 
 #[allow(dead_code)]
-struct Image {
+struct Image<'a> {
     name: String,
     t: String,
     ro: bool,
@@ -42,10 +42,12 @@ struct Image {
     t_modified: u64,
     size: u64,
     path: dbus::Path<'static>,
+    machine: Option<&'a Machine>,
 }
 
 fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::blocking::Connection>) -> Result<(), Box<dyn std::error::Error>> {
 
+    plane.into_ref_mut().erase();
     plane.cursor_home();
 
     let mut running = HashMap::new();
@@ -56,14 +58,21 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             running.insert(m.name.clone(), m);
         }
     }
+    let mut images: Vec<Image> = Vec::new();
     if let Ok(l) = bus.list_images() {
         for i in l {
-            let img = Image { name: i.0, t: i.1, ro: i.2, t_created: i.3, t_modified: i.4, size: i.5, path: i.6 };
-            if img.name.starts_with('.') {
+            if i.0.starts_with('.') {
                 continue;
             }
-            let on = running.contains_key(&img.name);
-            if on {
+            let on = running.contains_key(&i.0);
+            let img = Image { name: i.0.clone(), t: i.1, ro: i.2, t_created: i.3, t_modified: i.4, size: i.5, path: i.6, machine: if on {running.get(&i.0) } else {Option::None} };
+            images.push(img);
+        }
+        images.sort_by(|a,b| a.name.cmp(&b.name));
+    }
+
+    for img in images {
+            if img.machine.is_some() {
                 let fg = plane.fg();
                 plane.set_fg(0xFF0000);
                 plane.putstr("❤️ ")?;
@@ -91,10 +100,9 @@ fn update_listing(plane: &mut Plane, bus: &dbus::blocking::Proxy<'_, &dbus::bloc
             }
             let s = format!("{:22} {} {:>5}", name, if img.ro { "ro" } else { "rw" }, ss);
             plane.putstrln(&s)?;
-            if on {
+            if img.machine.is_some() {
                 plane.off_styles(Style::Bold);
             }
-        }
     }
     Ok(())
 }
